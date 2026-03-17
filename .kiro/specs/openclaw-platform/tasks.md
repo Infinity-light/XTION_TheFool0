@@ -416,18 +416,18 @@
     - 可使用 swagger-jsdoc 或手写 OpenAPI JSON
     - _Requirements: 8.12_
 
-- [ ] 15. Checkpoint — 后端完整性验证
+- [x] 15. Checkpoint — 后端完整性验证
   - 确保所有后端 API 端点可用，认证中间件正常拦截，速率限制生效，错误响应格式统一。如有问题请向用户确认。
 
-- [ ] 16. 前端 — WebSocket 客户端与状态管理
-  - [ ] 16.1 实现 WebSocket 客户端
+- [x] 16. 前端 — WebSocket 客户端与状态管理
+  - [x] 16.1 实现 WebSocket 客户端
     - 创建 `client/src/services/ws-client.ts`
     - WebSocket 连接管理：连接、断开、指数退避重连（初始 1s，最大 30s）
     - 消息收发：发送 ClientMessage，接收 ServerEvent / ServerResponse
     - 事件分发：将收到的事件分发到 Zustand store
     - _Requirements: 8.4_
 
-  - [ ] 16.2 实现 Zustand 状态管理
+  - [x] 16.2 实现 Zustand 状态管理
     - 创建 `client/src/stores/` 目录
     - `gameStore.ts`：World 状态（Map, Zones, Contestants, Positions）
     - `messageStore.ts`：消息列表（Talk, Broadcast, Barrage）
@@ -435,8 +435,8 @@
     - WebSocket 事件处理：根据事件类型更新对应 store
     - _Requirements: 6（前端状态管理）_
 
-- [ ] 17. 前端 — Phaser 3 游戏渲染
-  - [ ] 17.1 实现 BootScene 与 GameScene
+- [x] 17. 前端 — Phaser 3 游戏渲染
+  - [x] 17.1 实现 BootScene 与 GameScene
     - 创建 `client/src/game/` 目录
     - `BootScene.ts`：资源预加载（背景图、Sprite 素材、Zone 图标）
     - `GameScene.ts`：主场景，管理渲染层级（MapLayer → ZoneLayer → SpriteLayer → EffectLayer → UILayer）
@@ -446,7 +446,7 @@
     - 目标帧率 ≥30 FPS
     - _Requirements: 6.1, 6.2, 6.7, 6.8, 6.10, 2.9, 2.10_
 
-  - [ ] 17.2 实现 SpriteManager
+  - [x] 17.2 实现 SpriteManager
     - 创建 `client/src/game/sprite-manager.ts`
     - Contestant Sprite 创建/更新/销毁
     - Sprite 显示：选手名称标签、连接状态标识
@@ -457,15 +457,15 @@
     - 点击 Sprite 弹出 Attribute_Panel
     - _Requirements: 6.3, 6.4, 6.9, 1.8, 9.7, 9.11, 11.7_
 
-  - [ ] 17.3 实现 UIOverlay — 对话气泡、广播横幅、弹幕
+  - [x] 17.3 实现 UIOverlay — 对话气泡、广播横幅、弹幕
     - 创建 `client/src/components/UIOverlay.tsx`
     - 对话气泡：Talk 消息显示在发送者 Sprite 上方，3-5 秒后自动消失
     - 广播横幅：Broadcast 消息在画面顶部全局横幅样式展示
     - 弹幕滚动：Barrage 消息以滚动文字叠加渲染在游戏画面上
     - _Requirements: 6.5, 6.6, 10.2_
 
-- [ ] 18. 前端 — Attribute_Panel 与管理面板
-  - [ ] 18.1 实现 Attribute_Panel 组件
+- [x] 18. 前端 — Attribute_Panel 与管理面板
+  - [x] 18.1 实现 Attribute_Panel 组件
     - 创建 `client/src/components/AttributePanel.tsx`
     - 展示选手详细状态：名称、Position、所在 Zone 和 Zone_Type、Energy 值、连接状态
     - 心跳详情：最近心跳时间、当前延迟、CPU 负载、内存使用、响应延迟
@@ -473,13 +473,13 @@
     - 当前区域 API 可用状态
     - _Requirements: 6.9, 9.12, 10.4, 11.10_
 
-  - [ ] 18.2 实现心跳概览面板
+  - [x] 18.2 实现心跳概览面板
     - 创建 `client/src/components/HeartbeatOverview.tsx`
     - 列表形式展示所有 Contestant 的心跳状态、最近心跳时间、关键 Payload 指标
     - 心跳状态告警：超时/离线时屏幕边缘闪烁提示
     - _Requirements: 9.13, 9.14_
 
-  - [ ] 18.3 实现管理员面板
+  - [x] 18.3 实现管理员面板
     - 创建 `client/src/components/AdminPanel.tsx`
     - Key 管理界面：生成、查看、吊销、重新生成
     - Zone 管理界面：创建、编辑、删除 Zone，设置名称/坐标/Zone_Type
@@ -491,29 +491,29 @@
     - 监控面板：平台运行状态概览
     - _Requirements: 1.2, 2.3, 2.5, 2.9, 7.4, 9.5, 11.3, 12.4, 13.6_
 
-  - [ ] 18.4 实现观众互动 UI
+  - [x] 18.4 实现观众互动 UI
     - 弹幕输入框与发送功能
     - 点赞/踩按钮（点击 Sprite 后显示）
     - _Requirements: 10.1, 10.3, 10.4_
 
-- [ ] 19. Checkpoint — 前端渲染验证
+- [x] 19. Checkpoint — 前端渲染验证
   - 确保 Phaser 3 游戏画面正常渲染，Sprite 移动动画流畅，对话气泡/广播横幅/弹幕正常显示，管理面板功能可用。如有问题请向用户确认。
 
-- [ ] 20. 前后端集成与事件联调
-  - [ ] 20.1 集成 WebSocket 事件流
+- [x] 20. 前后端集成与事件联调
+  - [x] 20.1 集成 WebSocket 事件流
     - 前端 WSClient 连接后端 WebSocket 服务器
     - 认证流程：前端发送 auth 消息 → 后端验证 → 推送 world.state → 前端初始化游戏场景
     - 实时事件同步：contestant.join/leave/move/status、talk.message、broadcast.message、energy.update、zone.rule.update、doc.update、barrage、vote.update、alert.heartbeat
     - 确保所有 WebSocket 事件正确触发前端 Zustand store 更新和 Phaser 渲染
     - _Requirements: 8.4, 8.5_
 
-  - [ ] 20.2 集成 REST API 调用
+  - [x] 20.2 集成 REST API 调用
     - 前端管理面板调用管理员 API（Key/Zone/Skill/文档/心跳配置/监控）
     - 前端观众互动调用弹幕/投票 API
     - 确保认证 Header 正确传递
     - _Requirements: 8.1, 8.2_
 
-- [ ] 21. Final Checkpoint — 全系统验证
+- [x] 21. Final Checkpoint — 全系统验证
   - 确保所有后端 API 端点正常工作，WebSocket 实时事件推送正确，前端游戏渲染流畅，管理面板功能完整，观众互动正常。所有属性测试和单元测试通过。如有问题请向用户确认。
 
 ## Notes
