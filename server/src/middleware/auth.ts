@@ -4,13 +4,16 @@
 // =============================================================================
 
 import type { Request, Response, NextFunction } from 'express';
+import { db } from '../db';
 import { authManager } from '../modules/auth-manager';
+import { connections } from '../ws';
 
 // Extend Express Request to carry contestantId after auth
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
+      keyId?: string;
       contestantId?: string;
     }
   }
@@ -46,10 +49,19 @@ export async function authMiddleware(
 
   try {
     const result = await authManager.validateKey(key);
-    if (!result.valid || !result.contestantId) {
+    if (!result.valid || !result.keyId) {
       return next(httpError(401, 'AUTH_INVALID_KEY', 'Key 无效或已被吊销'));
     }
-    req.contestantId = result.contestantId;
+
+    req.keyId = result.keyId;
+
+    const contestant = db.prepare(`
+      SELECT id FROM contestants WHERE key_id = ?
+    `).get(result.keyId) as { id: string } | undefined;
+
+    // req.contestantId represents a currently attached contestant session.
+    // A historical contestant row alone is not enough once the WS session is gone.
+    req.contestantId = contestant && connections.has(contestant.id) ? contestant.id : undefined;
     next();
   } catch (err) {
     next(err);

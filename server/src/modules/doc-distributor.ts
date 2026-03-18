@@ -5,11 +5,10 @@
 
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { db as globalDb } from '../db';
-import { connections, sendEvent } from '../ws';
 import { skillDocManager, SkillDocManagerClass } from './skill-doc-manager';
 import type {
   IDocDistributor,
-  SkillMetadata,
+  SkillCatalogEntry,
   PlatformDocument,
   ServerEvent,
 } from '../types';
@@ -56,14 +55,22 @@ export class DocDistributorClass implements IDocDistributor {
     this.db = db;
     this.skillMgr = skillMgr ?? new SkillDocManagerClass(db);
     this.connectionsMap = connectionsMap ?? new Map();
-    this.sendEventFn = sendEventFn ?? sendEvent;
+    this.sendEventFn = sendEventFn ?? (() => undefined);
+  }
+
+  attachRealtime(
+    connectionsMap: Map<string, WebSocket>,
+    sendEventFn: (ws: WebSocket, event: ServerEvent) => void,
+  ): void {
+    this.connectionsMap = connectionsMap;
+    this.sendEventFn = sendEventFn;
   }
 
   /**
    * List available skills — returns metadata summaries only (no full body)
    * Requirements: 7.7
    */
-  async listAvailableSkills(_contestantId: string): Promise<SkillMetadata[]> {
+  async listAvailableSkills(_contestantId: string): Promise<SkillCatalogEntry[]> {
     return this.skillMgr.listDocuments();
   }
 
@@ -159,13 +166,10 @@ export class DocDistributorClass implements IDocDistributor {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton — uses global db and ws connections
+// Singleton — realtime dependencies are attached from ws.ts at runtime
 // ---------------------------------------------------------------------------
 
-class DocDistributorSingleton extends DocDistributorClass {
-  constructor() {
-    super(globalDb, skillDocManager as unknown as SkillDocManagerClass, connections, sendEvent);
-  }
-}
-
-export const docDistributor = new DocDistributorSingleton();
+export const docDistributor = new DocDistributorClass(
+  globalDb,
+  skillDocManager as unknown as SkillDocManagerClass,
+);

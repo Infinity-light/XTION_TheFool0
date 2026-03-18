@@ -6,12 +6,40 @@
 // =============================================================================
 
 import { Router, type Request, type Response } from 'express';
+import { db } from '../db';
 import { heartbeatMonitor } from '../modules/heartbeat-monitor';
-import type { ErrorResponse, HeartbeatConfig } from '../types';
+import type { ErrorResponse, HeartbeatConfig, HeartbeatRecord } from '../types';
 
 export const adminHeartbeatRouter = Router();
 
 let currentConfig: HeartbeatConfig = { interval: 10, timeout: 30 };
+
+function getHeartbeatHistory(contestantId: string, limit: number): HeartbeatRecord[] {
+  const cap = Math.min(limit, 100);
+  const rows = db.prepare(`
+    SELECT contestant_id, timestamp, cpu_load, memory_usage, response_latency
+    FROM heartbeat_records
+    WHERE contestant_id = ?
+    ORDER BY timestamp DESC
+    LIMIT ?
+  `).all(contestantId, cap) as Array<{
+    contestant_id: string;
+    timestamp: number;
+    cpu_load: number;
+    memory_usage: number;
+    response_latency: number;
+  }>;
+
+  return rows.map((row) => ({
+    contestantId: row.contestant_id,
+    timestamp: row.timestamp,
+    payload: {
+      cpuLoad: row.cpu_load,
+      memoryUsage: row.memory_usage,
+      responseLatency: row.response_latency,
+    },
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/heartbeat/config
@@ -68,12 +96,11 @@ adminHeartbeatRouter.get('/contestants/:id/heartbeat-history', (req: Request, re
     return;
   }
 
-  const history = heartbeatMonitor.getHistory(id, limit);
+  const history = getHeartbeatHistory(id, limit);
 
   res.status(200).json({
     contestantId: id,
     history,
   });
 });
-
 

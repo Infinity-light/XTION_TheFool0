@@ -71,7 +71,7 @@ export class AuthManagerClass implements IAuthManager {
    * 验证 Key 是否有效（存在且状态为 active）
    * Requirements: 1.3, 1.4
    */
-  async validateKey(key: string): Promise<{ valid: boolean; contestantId?: string }> {
+  async validateKey(key: string): Promise<{ valid: boolean; keyId?: string }> {
     const row = this.db.prepare(`
       SELECT id, status FROM keys WHERE key = ?
     `).get(key) as { id: string; status: string } | undefined;
@@ -80,7 +80,7 @@ export class AuthManagerClass implements IAuthManager {
       return { valid: false };
     }
 
-    return { valid: true, contestantId: row.id };
+    return { valid: true, keyId: row.id };
   }
 
   /**

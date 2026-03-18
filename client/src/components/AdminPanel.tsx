@@ -7,15 +7,14 @@
  *   - Skills: upload, edit, view, delete, version management (Req 7.4)
  *   - Docs: edit RULES.md / MESSAGING.md (Req 12.4)
  *   - Heartbeat: configure interval/timeout (Req 9.5)
- *   - Map: background image, zone visual style (Req 2.9)
  *   - Monitor: platform status overview (Req 13.6)
  *
- * Requirements: 1.2, 2.3, 2.5, 2.9, 7.4, 9.5, 11.3, 12.4, 13.6
+ * Requirements: 1.2, 2.3, 2.5, 7.4, 9.5, 11.3, 12.4, 13.6
  */
 
 import { useEffect, useState, useCallback } from 'react';
 import { useUiStore } from '../stores/uiStore';
-import { apiClient } from '../services/api-client';
+import { apiClient, clearAdminToken, getAdminToken, setAdminToken } from '../services/api-client';
 import type { Key, Zone, ZoneType, SkillDocument, HeartbeatConfig } from '../../../server/src/types/index';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -62,7 +61,7 @@ function KeysTab() {
     if (!newName.trim()) return;
     setLoading(true);
     try {
-      await apiClient.post('/api/admin/keys', { contestantName: newName });
+      await apiClient.post('/api/admin/keys', { name: newName });
       setNewName('');
       await load();
     } finally {
@@ -242,13 +241,13 @@ function SkillsTab() {
 
   const upload = async () => {
     if (!content.trim()) return;
-    try { await apiClient.post('/api/admin/skills', { markdownContent: content }); } catch { /* ignore */ }
+    try { await apiClient.post('/api/admin/skills', { content }); } catch { /* ignore */ }
     setContent('');
     await load();
   };
 
   const update = async (id: string) => {
-    try { await apiClient.put(`/api/admin/skills/${id}`, { markdownContent: content }); } catch { /* ignore */ }
+    try { await apiClient.put(`/api/admin/skills/${id}`, { content }); } catch { /* ignore */ }
     setEditingId(null);
     setContent('');
     await load();
@@ -348,7 +347,7 @@ function DocsTab() {
   useEffect(() => { load(selectedDoc); }, [selectedDoc, load]);
 
   const save = async () => {
-    try { await apiClient.put(`/api/admin/docs/${selectedDoc}`, { markdownContent: content }); } catch { /* ignore */ }
+    try { await apiClient.put(`/api/admin/docs/${selectedDoc}`, { content }); } catch { /* ignore */ }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -376,7 +375,7 @@ function DocsTab() {
 // ─── Heartbeat Config Tab ─────────────────────────────────────────────────────
 
 function HeartbeatConfigTab() {
-  const [config, setConfig] = useState<HeartbeatConfig>({ interval: 5000, timeout: 15000 });
+  const [config, setConfig] = useState<HeartbeatConfig>({ interval: 10, timeout: 30 });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -394,12 +393,12 @@ function HeartbeatConfigTab() {
   return (
     <div>
       <SectionTitle>心跳配置</SectionTitle>
-      <Field label={`心跳间隔 (ms) — 当前: ${config.interval}ms (${config.interval / 1000}s)`}>
-        <input style={inputStyle} type="range" min={1000} max={30000} step={1000} value={config.interval}
+      <Field label={`心跳间隔 (秒) — 当前: ${config.interval}s`}>
+        <input style={inputStyle} type="range" min={1} max={30} step={1} value={config.interval}
           onChange={(e) => setConfig({ ...config, interval: Number(e.target.value) })} />
       </Field>
-      <Field label={`心跳超时 (ms) — 当前: ${config.timeout}ms (${config.timeout / 1000}s)`}>
-        <input style={inputStyle} type="range" min={3000} max={120000} step={1000} value={config.timeout}
+      <Field label={`心跳超时 (秒) — 当前: ${config.timeout}s`}>
+        <input style={inputStyle} type="range" min={3} max={120} step={1} value={config.timeout}
           onChange={(e) => setConfig({ ...config, timeout: Number(e.target.value) })} />
       </Field>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -410,42 +409,13 @@ function HeartbeatConfigTab() {
   );
 }
 
-// ─── Map Config Tab ───────────────────────────────────────────────────────────
-
-function MapConfigTab() {
-  const [bgImage, setBgImage] = useState('');
-  const [saved, setSaved] = useState(false);
-
-  const save = async () => {
-    try { await apiClient.put('/api/admin/map', { backgroundImage: bgImage }); } catch { /* ignore */ }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  return (
-    <div>
-      <SectionTitle>地图配置</SectionTitle>
-      <Field label="背景图片 URL">
-        <input style={inputStyle} placeholder="https://..." value={bgImage} onChange={(e) => setBgImage(e.target.value)} />
-      </Field>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button style={btnStyle('primary')} onClick={save}>保存</button>
-        {saved && <span style={{ color: '#4ade80', fontSize: 12 }}>✓ 已保存</span>}
-      </div>
-      <div style={{ color: '#6b7280', fontSize: 11, marginTop: 12 }}>
-        Zone 视觉样式可在 Zone 管理中编辑各 Zone 的 style 字段。
-      </div>
-    </div>
-  );
-}
-
 // ─── Monitor Tab ──────────────────────────────────────────────────────────────
 
 interface MonitorData {
   onlineCount: number;
-  zoneDistribution: Record<string, number>;
-  apiCallRate: number;
-  heartbeatAnomalies: string[];
+  zonePopulation: Array<{ zoneId: string; zoneName: string; count: number }>;
+  recentApiCallsPerMinute: number;
+  heartbeatAnomalies: Array<{ contestantId: string; healthStatus: string }>;
 }
 
 function MonitorTab() {
@@ -475,24 +445,26 @@ function MonitorTab() {
           <div style={{ color: '#9ca3af', fontSize: 11 }}>在线选手</div>
         </div>
         <div style={{ background: 'rgba(120,180,255,0.1)', border: '1px solid rgba(120,180,255,0.3)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-          <div style={{ color: '#7ec8ff', fontSize: 24, fontWeight: 700 }}>{data.apiCallRate}</div>
+          <div style={{ color: '#7ec8ff', fontSize: 24, fontWeight: 700 }}>{data.recentApiCallsPerMinute}</div>
           <div style={{ color: '#9ca3af', fontSize: 11 }}>API 调用/分钟</div>
         </div>
       </div>
 
       <SectionTitle>Zone 人数分布</SectionTitle>
-      {Object.entries(data.zoneDistribution).map(([zone, count]) => (
-        <div key={zone} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          <span style={{ color: '#e5e7eb' }}>{zone}</span>
-          <span style={{ color: '#7ec8ff' }}>{count} 人</span>
+      {data.zonePopulation.map((zone) => (
+        <div key={zone.zoneId} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <span style={{ color: '#e5e7eb' }}>{zone.zoneName}</span>
+          <span style={{ color: '#7ec8ff' }}>{zone.count} 人</span>
         </div>
       ))}
 
       {data.heartbeatAnomalies.length > 0 && (
         <>
           <SectionTitle>心跳异常</SectionTitle>
-          {data.heartbeatAnomalies.map((id) => (
-            <div key={id} style={{ color: '#f87171', fontSize: 11, padding: '3px 0' }}>⚠ {id}</div>
+          {data.heartbeatAnomalies.map((entry) => (
+            <div key={entry.contestantId} style={{ color: '#f87171', fontSize: 11, padding: '3px 0' }}>
+              ⚠ {entry.contestantId} · {entry.healthStatus}
+            </div>
           ))}
         </>
       )}
@@ -504,7 +476,7 @@ function MonitorTab() {
 
 // ─── Main AdminPanel ──────────────────────────────────────────────────────────
 
-type TabId = 'keys' | 'zones' | 'skills' | 'docs' | 'heartbeat' | 'map' | 'monitor';
+type TabId = 'keys' | 'zones' | 'skills' | 'docs' | 'heartbeat' | 'monitor';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'keys', label: '🔑 Keys' },
@@ -512,7 +484,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'skills', label: '📄 Skills' },
   { id: 'docs', label: '📋 文档' },
   { id: 'heartbeat', label: '💓 心跳' },
-  { id: 'map', label: '🖼 地图' },
   { id: 'monitor', label: '📊 监控' },
 ];
 
@@ -520,6 +491,21 @@ export function AdminPanel() {
   const showAdmin = useUiStore((s) => s.showAdminPanel);
   const setShowAdmin = useUiStore((s) => s.setShowAdminPanel);
   const [activeTab, setActiveTab] = useState<TabId>('keys');
+  const [adminToken, setAdminTokenState] = useState<string>(getAdminToken());
+  const [draftAdminToken, setDraftAdminToken] = useState<string>(getAdminToken());
+
+  const saveAdminAccess = () => {
+    setAdminToken(draftAdminToken);
+    const next = getAdminToken();
+    setAdminTokenState(next);
+    setDraftAdminToken(next);
+  };
+
+  const clearAdminAccess = () => {
+    clearAdminToken();
+    setAdminTokenState('');
+    setDraftAdminToken('');
+  };
 
   return (
     <>
@@ -553,37 +539,75 @@ export function AdminPanel() {
           {/* Header */}
           <div style={{ padding: '16px 16px 0', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ color: '#f0f9ff', fontSize: 15, fontWeight: 700 }}>⚙ 管理面板</span>
-              <button onClick={() => setShowAdmin(false)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 18 }}>×</button>
+              <div>
+                <span style={{ color: '#f0f9ff', fontSize: 15, fontWeight: 700 }}>⚙ 管理面板</span>
+                {adminToken && (
+                  <div style={{ color: '#6b7280', fontSize: 10, marginTop: 4 }}>
+                    已载入管理员令牌
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {adminToken && (
+                  <button onClick={clearAdminAccess} style={{ ...btnStyle('ghost'), padding: '4px 10px' }}>
+                    清除令牌
+                  </button>
+                )}
+                <button onClick={() => setShowAdmin(false)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 18 }}>×</button>
+              </div>
             </div>
-            {/* Tabs */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingBottom: 12 }}>
-              {TABS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTab(t.id)}
-                  style={{
-                    padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                    border: 'none',
-                    background: activeTab === t.id ? 'rgba(120,180,255,0.25)' : 'rgba(255,255,255,0.05)',
-                    color: activeTab === t.id ? '#7ec8ff' : '#9ca3af',
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            {adminToken && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingBottom: 12 }}>
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveTab(t.id)}
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      border: 'none',
+                      background: activeTab === t.id ? 'rgba(120,180,255,0.25)' : 'rgba(255,255,255,0.05)',
+                      color: activeTab === t.id ? '#7ec8ff' : '#9ca3af',
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Tab content */}
           <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-            {activeTab === 'keys' && <KeysTab />}
-            {activeTab === 'zones' && <ZonesTab />}
-            {activeTab === 'skills' && <SkillsTab />}
-            {activeTab === 'docs' && <DocsTab />}
-            {activeTab === 'heartbeat' && <HeartbeatConfigTab />}
-            {activeTab === 'map' && <MapConfigTab />}
-            {activeTab === 'monitor' && <MonitorTab />}
+            {!adminToken ? (
+              <div>
+                <SectionTitle>管理员令牌</SectionTitle>
+                <div style={{ color: '#9ca3af', fontSize: 12, lineHeight: 1.6, marginBottom: 12 }}>
+                  管理接口现在需要单独的管理员令牌。请先在服务端配置 `OPENCLAW_ADMIN_TOKEN`，
+                  然后在这里填入相同的值，或通过 URL 参数 `?admin_token=...` 注入。
+                </div>
+                <Field label="X-Admin-Token">
+                  <input
+                    style={inputStyle}
+                    type="password"
+                    placeholder="输入管理员令牌"
+                    value={draftAdminToken}
+                    onChange={(e) => setDraftAdminToken(e.target.value)}
+                  />
+                </Field>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button style={btnStyle('primary')} onClick={saveAdminAccess}>保存令牌</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {activeTab === 'keys' && <KeysTab />}
+                {activeTab === 'zones' && <ZonesTab />}
+                {activeTab === 'skills' && <SkillsTab />}
+                {activeTab === 'docs' && <DocsTab />}
+                {activeTab === 'heartbeat' && <HeartbeatConfigTab />}
+                {activeTab === 'monitor' && <MonitorTab />}
+              </>
+            )}
           </div>
         </div>
       )}

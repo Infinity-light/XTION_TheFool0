@@ -22,9 +22,8 @@ function httpError(statusCode: number, code: string, message: string) {
 
 skillsRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // contestantId comes from auth middleware (added in task 14.1); use header fallback for now
-    const contestantId = (req.headers['x-contestant-id'] as string) ?? 'anonymous';
-    const list = await docDistributor.listAvailableSkills(contestantId);
+    const identity = req.contestantId ?? req.keyId ?? 'anonymous';
+    const list = await docDistributor.listAvailableSkills(identity);
     res.json(list);
   } catch (err) {
     next(err);
@@ -38,7 +37,11 @@ skillsRouter.get('/', async (req: Request, res: Response, next: NextFunction) =>
 
 skillsRouter.get('/:id/install', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const contestantId = (req.headers['x-contestant-id'] as string) ?? 'anonymous';
+    const contestantId = req.contestantId;
+    if (!contestantId) {
+      return next(httpError(409, 'AUTH_CONTESTANT_NOT_REGISTERED', '当前 Key 尚未通过 WebSocket 完成接入'));
+    }
+
     const content = await docDistributor.installSkill(contestantId, req.params['id'] as string);
     res.type('text/markdown').send(content);
   } catch (err) {

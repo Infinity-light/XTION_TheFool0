@@ -16,21 +16,35 @@ function httpError(statusCode: number, code: string, message: string) {
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/admin/skills — 列出所有 Skill 文档
+// ---------------------------------------------------------------------------
+
+adminSkillsRouter.get('/', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const docs = await skillDocManager.listFullDocuments();
+    res.json(docs);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/admin/skills — 上传 SKILL.md
 // Requirements: 7.4
 // ---------------------------------------------------------------------------
 
 adminSkillsRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { content } = req.body as { content?: string };
-    if (!content || typeof content !== 'string') {
+    const { content, markdownContent } = req.body as { content?: string; markdownContent?: string };
+    const resolvedContent = content ?? markdownContent;
+    if (!resolvedContent || typeof resolvedContent !== 'string') {
       return next(httpError(400, 'INVALID_PARAM', '参数 content 不能为空'));
     }
-    const validation = skillDocManager.validateMetadata(content);
+    const validation = skillDocManager.validateMetadata(resolvedContent);
     if (!validation.valid) {
       return next(httpError(400, 'INVALID_METADATA', validation.errors.join('; ')));
     }
-    const doc = await skillDocManager.uploadDocument(content);
+    const doc = await skillDocManager.uploadDocument(resolvedContent);
     res.status(201).json(doc);
   } catch (err) {
     next(err);
@@ -44,11 +58,12 @@ adminSkillsRouter.post('/', async (req: Request, res: Response, next: NextFuncti
 
 adminSkillsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { content } = req.body as { content?: string };
-    if (!content || typeof content !== 'string') {
+    const { content, markdownContent } = req.body as { content?: string; markdownContent?: string };
+    const resolvedContent = content ?? markdownContent;
+    if (!resolvedContent || typeof resolvedContent !== 'string') {
       return next(httpError(400, 'INVALID_PARAM', '参数 content 不能为空'));
     }
-    const doc = await skillDocManager.updateDocument(req.params['id'] as string, content);
+    const doc = await skillDocManager.updateDocument(req.params['id'] as string, resolvedContent);
     res.json(doc);
   } catch (err) {
     const e = err as Error & { code?: string };
@@ -103,7 +118,7 @@ adminSkillsRouter.post('/:id/rollback/:version', async (req: Request, res: Respo
     res.json(doc);
   } catch (err) {
     const e = err as Error & { code?: string };
-    if (e.code === 'DOC_NOT_FOUND' || e.code === 'VERSION_NOT_FOUND') {
+    if (e.code === 'DOC_NOT_FOUND' || e.code === 'DOC_VERSION_NOT_FOUND') {
       return next(httpError(404, e.code, e.message));
     }
     next(err);

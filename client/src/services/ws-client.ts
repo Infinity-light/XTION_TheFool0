@@ -73,6 +73,12 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'rec
 
 const INITIAL_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
+const NON_RETRYABLE_CLOSE_CODES = new Set([1008]);
+const NON_RETRYABLE_CLOSE_REASONS = new Set([
+  'AUTH_INVALID_KEY',
+  'AUTH_MISSING_KEY',
+  'replaced_by_new_connection',
+]);
 
 class WSClient {
   private ws: WebSocket | null = null;
@@ -243,9 +249,12 @@ class WSClient {
       this.ws = null;
       this._notifyListeners(this.onDisconnectListeners);
 
-      if (this.shouldReconnect) {
+      if (this.shouldReconnect && this._shouldReconnectAfterClose(event)) {
         this._scheduleReconnect();
       } else {
+        if (!this._shouldReconnectAfterClose(event)) {
+          this.shouldReconnect = false;
+        }
         this._setState('disconnected');
       }
     };
@@ -327,6 +336,10 @@ class WSClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+  }
+
+  private _shouldReconnectAfterClose(event: CloseEvent): boolean {
+    return !NON_RETRYABLE_CLOSE_CODES.has(event.code) && !NON_RETRYABLE_CLOSE_REASONS.has(event.reason);
   }
 
   // ---------------------------------------------------------------------------

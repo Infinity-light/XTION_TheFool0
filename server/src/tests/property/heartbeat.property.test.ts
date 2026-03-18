@@ -69,9 +69,15 @@ function makeMonitor() {
       contestants = new Map<string, State>();
 
       register(id: string) {
-        if (!this.contestants.has(id)) {
-          this.contestants.set(id, { lastHeartbeat: Date.now(), status: 'healthy', timeoutEnteredAt: null, history: [] });
+        const existing = this.contestants.get(id);
+        if (existing) {
+          existing.lastHeartbeat = Date.now();
+          existing.status = 'healthy';
+          existing.timeoutEnteredAt = null;
+          return;
         }
+
+        this.contestants.set(id, { lastHeartbeat: Date.now(), status: 'healthy', timeoutEnteredAt: null, history: [] });
       }
 
       onHeartbeat(id: string, payload: HeartbeatPayload) {
@@ -280,6 +286,29 @@ describe('Property 26: 心跳状态机正确性', () => {
           state.status = 'timeout';
           monitor.onHeartbeat(id, makePayload());
           expect(monitor.getStatus(id)).toBe('healthy');
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  it('已有状态的 Contestant 重新 register 后 → 恢复 healthy 并刷新计时', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1 }),
+        (id) => {
+          const monitor = makeMonitor();
+          monitor.register(id);
+          const state = monitor.contestants.get(id)!;
+          state.status = 'timeout';
+          state.timeoutEnteredAt = Date.now() - 5000;
+          state.lastHeartbeat = Date.now() - 60000;
+
+          monitor.register(id);
+
+          expect(monitor.getStatus(id)).toBe('healthy');
+          expect(state.timeoutEnteredAt).toBeNull();
+          expect(state.lastHeartbeat).toBeGreaterThan(Date.now() - 2000);
         },
       ),
       { numRuns: 100 },

@@ -26,11 +26,12 @@ function createHttpError(statusCode: number, code: string, message: string): Err
 
 adminKeysRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name } = req.body as { name?: string };
-    if (!name || typeof name !== 'string' || name.trim() === '') {
+    const { name, contestantName } = req.body as { name?: string; contestantName?: string };
+    const resolvedName = name ?? contestantName;
+    if (!resolvedName || typeof resolvedName !== 'string' || resolvedName.trim() === '') {
       return next(createHttpError(400, 'INVALID_PARAM', '参数 name 不能为空'));
     }
-    const key = await authManager.generateKey(name.trim());
+    const key = await authManager.generateKey(resolvedName.trim());
     res.status(201).json(key);
   } catch (err) {
     next(err);

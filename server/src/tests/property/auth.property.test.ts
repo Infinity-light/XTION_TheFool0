@@ -97,7 +97,7 @@ describe('Property 2: 认证正确性', () => {
     mockGet = (db.prepare as ReturnType<typeof vi.fn>)().get;
   });
 
-  it('有效 Key（active）→ validateKey 返回 { valid: true, contestantId: keyId }', async () => {
+  it('有效 Key（active）→ validateKey 返回 { valid: true, keyId }', async () => {
     // Validates: Requirements 1.3
     await fc.assert(
       fc.asyncProperty(
@@ -108,7 +108,7 @@ describe('Property 2: 认证正确性', () => {
           mockGet.mockReturnValue({ id: keyId, status: 'active' });
 
           const result = await authManager.validateKey('some-valid-key');
-          return result.valid === true && result.contestantId === keyId;
+          return result.valid === true && result.keyId === keyId;
         },
       ),
       { numRuns: 100 },
@@ -126,7 +126,7 @@ describe('Property 2: 认证正确性', () => {
           mockGet.mockReturnValue(undefined);
 
           const result = await authManager.validateKey(_nonExistentKey);
-          return result.valid === false && result.contestantId === undefined;
+          return result.valid === false && result.keyId === undefined;
         },
       ),
       { numRuns: 100 },
@@ -144,7 +144,7 @@ describe('Property 2: 认证正确性', () => {
           mockGet.mockReturnValue({ id: keyId, status: 'revoked' });
 
           const result = await authManager.validateKey('some-revoked-key');
-          return result.valid === false && result.contestantId === undefined;
+          return result.valid === false && result.keyId === undefined;
         },
       ),
       { numRuns: 100 },
@@ -177,16 +177,16 @@ describe('Property 2: 认证正确性', () => {
           if (scenario === 'active') {
             mockGet.mockReturnValue({ id: keyId, status: 'active' });
             const result = await authManager.validateKey('test-key');
-            return result.valid === true && result.contestantId === keyId;
+            return result.valid === true && result.keyId === keyId;
           } else if (scenario === 'revoked') {
             mockGet.mockReturnValue({ id: keyId, status: 'revoked' });
             const result = await authManager.validateKey('test-key');
-            return result.valid === false && result.contestantId === undefined;
+            return result.valid === false && result.keyId === undefined;
           } else {
             // nonexistent
             mockGet.mockReturnValue(undefined);
             const result = await authManager.validateKey('test-key');
-            return result.valid === false && result.contestantId === undefined;
+            return result.valid === false && result.keyId === undefined;
           }
         },
       ),

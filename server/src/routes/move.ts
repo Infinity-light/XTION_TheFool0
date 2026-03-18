@@ -5,52 +5,10 @@
 // =============================================================================
 
 import { Router, type Request, type Response } from 'express';
-import { db } from '../db';
 import { coreAPIHandler, APIError } from '../modules/core-api-handler';
 import type { ErrorResponse, Position } from '../types';
 
 export const moveRouter = Router();
-
-// ---------------------------------------------------------------------------
-// Helper: extract contestant from Authorization header or senderId fallback
-// (Same pattern as broadcast.ts)
-// ---------------------------------------------------------------------------
-
-interface ContestantRow {
-  id: string;
-  name: string;
-  status: string;
-}
-
-function getContestantFromRequest(req: Request): ContestantRow | null {
-  const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const key = authHeader.slice(7).trim();
-    if (key) {
-      const keyRow = db.prepare(`
-        SELECT id FROM keys WHERE key = ? AND status = 'active'
-      `).get(key) as { id: string } | undefined;
-
-      if (keyRow) {
-        const contestant = db.prepare(`
-          SELECT id, name, status FROM contestants WHERE key_id = ?
-        `).get(keyRow.id) as ContestantRow | undefined;
-        if (contestant) return contestant;
-      }
-    }
-  }
-
-  // Fallback: use senderId from body
-  const { senderId } = req.body as { senderId?: string };
-  if (senderId) {
-    const contestant = db.prepare(`
-      SELECT id, name, status FROM contestants WHERE id = ?
-    `).get(senderId) as ContestantRow | undefined;
-    if (contestant) return contestant;
-  }
-
-  return null;
-}
 
 // ---------------------------------------------------------------------------
 // POST /api/move
@@ -59,13 +17,12 @@ function getContestantFromRequest(req: Request): ContestantRow | null {
 // ---------------------------------------------------------------------------
 
 moveRouter.post('/', async (req: Request, res: Response): Promise<void> => {
-  // Auth / sender resolution
-  const contestant = getContestantFromRequest(req);
-  if (!contestant) {
+  const contestantId = req.contestantId;
+  if (!contestantId) {
     const body: ErrorResponse = {
-      error: { code: 'AUTH_MISSING_KEY', message: '未携带有效的认证 Key 或 senderId' },
+      error: { code: 'AUTH_CONTESTANT_NOT_REGISTERED', message: '当前 Key 尚未通过 WebSocket 完成接入' },
     };
-    res.status(401).json(body);
+    res.status(409).json(body);
     return;
   }
 
@@ -104,7 +61,7 @@ moveRouter.post('/', async (req: Request, res: Response): Promise<void> => {
 
   try {
     const result = await coreAPIHandler.handleMove({
-      contestantId: contestant.id,
+      contestantId,
       target: parsedTarget,
     });
 

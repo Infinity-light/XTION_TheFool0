@@ -145,6 +145,9 @@ interface ServerResponse {
 }
 ```
 
+当前实现中，接入主流程使用 `auth` → `world.state` / `error` 事件；`requestId` 与 `ServerResponse`
+目前仅作为保留设计，认证成功不会额外返回 `response` 信封。
+
 #### 事件类型清单
 
 | type | 方向 | 说明 | 来源需求 |
@@ -169,6 +172,7 @@ interface ServerResponse {
 ### 2. REST API 接口设计
 
 所有 Agent API 请求需在 Header 中携带 `Authorization: Bearer <key>`。
+所有管理员 API 请求需在 Header 中携带 `X-Admin-Token: <admin-token>`，并与 Agent Key 认证分离。
 所有错误响应遵循统一格式：`{ "error": { "code": "<错误码>", "message": "<错误描述>" } }`
 
 #### Core API（Agent 调用）
@@ -246,7 +250,7 @@ interface ServerResponse {
 ```typescript
 interface IAuthManager {
   generateKey(contestantName: string): Promise<Key>;
-  validateKey(key: string): Promise<{ valid: boolean; contestantId?: string }>;
+  validateKey(key: string): Promise<{ valid: boolean; keyId?: string }>;
   revokeKey(keyId: string): Promise<void>;
   regenerateKey(keyId: string): Promise<Key>;
   listKeys(): Promise<Key[]>;

@@ -6,8 +6,34 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { db } from '../db';
 import { heartbeatMonitor } from '../modules/heartbeat-monitor';
+import type { HealthStatus } from '../types';
 
 export const adminMonitorRouter = Router();
+
+interface ContestantMonitorRow {
+  id: string;
+  status: string;
+  connected_at: number | null;
+  disconnected_at: number | null;
+}
+
+function getAnomalyStatus(row: ContestantMonitorRow): HealthStatus | null {
+  if (row.status === 'timeout') {
+    return 'timeout';
+  }
+
+  const runtimeStatus = heartbeatMonitor.getHealthStatus(row.id);
+  if (runtimeStatus === 'timeout' || runtimeStatus === 'delayed') {
+    return runtimeStatus;
+  }
+
+  const hasBeenSeenOnline = row.connected_at !== null || row.disconnected_at !== null;
+  if (row.status === 'offline' && hasBeenSeenOnline) {
+    return 'offline';
+  }
+
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/monitor — 平台运行状态概览
@@ -29,17 +55,23 @@ adminMonitorRouter.get('/monitor', (_req: Request, res: Response, next: NextFunc
       GROUP BY z.id, z.name
     `).all() as Array<{ zone_id: string; zone_name: string; count: number }>;
 
-    // Heartbeat anomalies — contestants with timeout or offline status
-    const onlineContestants = db.prepare(
-      "SELECT id FROM contestants WHERE status = 'online'",
-    ).all() as Array<{ id: string }>;
+    // Heartbeat anomalies — include delayed online contestants and timeout/offline contestants
+    const contestants = db.prepare(`
+      SELECT id, status, connected_at, disconnected_at
+      FROM contestants
+    `).all() as ContestantMonitorRow[];
 
-    const heartbeatAnomalies = onlineContestants
-      .map(c => ({
-        contestantId: c.id,
-        healthStatus: heartbeatMonitor.getHealthStatus(c.id),
-      }))
-      .filter(c => c.healthStatus === 'timeout' || c.healthStatus === 'delayed');
+    const heartbeatAnomalies = contestants
+      .map((contestant) => {
+        const anomalyStatus = getAnomalyStatus(contestant);
+        if (!anomalyStatus) return null;
+
+        return {
+          contestantId: contestant.id,
+          healthStatus: anomalyStatus,
+        };
+      })
+      .filter((entry): entry is { contestantId: string; healthStatus: HealthStatus } => entry !== null);
 
     // Recent API call counts from events table (last 60 seconds)
     const since = Date.now() - 60_000;
@@ -49,7 +81,11 @@ adminMonitorRouter.get('/monitor', (_req: Request, res: Response, next: NextFunc
 
     res.json({
       onlineCount,
-      zonePopulation,
+      zonePopulation: zonePopulation.map((zone) => ({
+        zoneId: zone.zone_id,
+        zoneName: zone.zone_name,
+        count: zone.count,
+      })),
       recentApiCallsPerMinute: recentApiCalls,
       heartbeatAnomalies,
       timestamp: Date.now(),

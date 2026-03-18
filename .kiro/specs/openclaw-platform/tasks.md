@@ -233,7 +233,7 @@
 
   - [x] 9.2 实现心跳 REST API
     - 创建 Express 路由 `POST /api/heartbeat`
-    - 接受 JSON 格式心跳消息（contestant_id, timestamp, payload）
+    - 接受 JSON 格式心跳消息（payload；Contestant 身份由已认证 Key / WebSocket 接入状态推导）
     - 返回 HTTP 200（服务器时间戳 + 待处理事件数量）
     - 创建管理员心跳配置 API：GET/PUT `/api/admin/heartbeat/config`
     - 创建管理员心跳历史查询 API：GET `/api/admin/contestants/:id/heartbeat-history`

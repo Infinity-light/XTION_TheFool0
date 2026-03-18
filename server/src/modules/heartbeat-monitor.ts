@@ -5,7 +5,6 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
-import { connections, sendEvent, broadcast } from '../ws';
 import type {
   IHeartbeatMonitor,
   HeartbeatPayload,
@@ -13,6 +12,8 @@ import type {
   HeartbeatConfig,
   HealthStatus,
 } from '../types/index';
+import type { ServerEvent } from '../types/index';
+import type { WebSocket } from 'ws';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,13 +51,33 @@ class HeartbeatMonitor implements IHeartbeatMonitor {
 
   private contestants = new Map<string, ContestantState>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private connectionsMap: Map<string, WebSocket> = new Map();
+  private sendEventFn: (ws: WebSocket, event: ServerEvent) => void = () => undefined;
+  private broadcastFn: (event: ServerEvent, exclude?: string) => void = () => undefined;
 
   // -------------------------------------------------------------------------
   // Public API
   // -------------------------------------------------------------------------
 
+  attachRealtime(
+    connectionsMap: Map<string, WebSocket>,
+    sendEventFn: (ws: WebSocket, event: ServerEvent) => void,
+    broadcastFn: (event: ServerEvent, exclude?: string) => void,
+  ): void {
+    this.connectionsMap = connectionsMap;
+    this.sendEventFn = sendEventFn;
+    this.broadcastFn = broadcastFn;
+  }
+
   register(contestantId: string): void {
-    if (this.contestants.has(contestantId)) return;
+    const existing = this.contestants.get(contestantId);
+    if (existing) {
+      existing.lastHeartbeat = Date.now();
+      existing.status = 'healthy';
+      existing.timeoutEnteredAt = null;
+      this.ensureTimer();
+      return;
+    }
 
     this.contestants.set(contestantId, {
       lastHeartbeat: Date.now(),
@@ -208,9 +229,9 @@ class HeartbeatMonitor implements IHeartbeatMonitor {
     db.prepare(`UPDATE contestants SET status = 'timeout' WHERE id = ?`).run(contestantId);
 
     // Push contestant.status WebSocket event to the contestant
-    const ws = connections.get(contestantId);
+    const ws = this.connectionsMap.get(contestantId);
     if (ws) {
-      sendEvent(ws, {
+      this.sendEventFn(ws, {
         type: 'contestant.status',
         payload: { id: contestantId, status: 'timeout' },
         timestamp: Date.now(),
@@ -219,7 +240,7 @@ class HeartbeatMonitor implements IHeartbeatMonitor {
 
     // Push alert.heartbeat event to the contestant
     if (ws) {
-      sendEvent(ws, {
+      this.sendEventFn(ws, {
         type: 'alert.heartbeat',
         payload: { id: contestantId, status: 'timeout' },
         timestamp: Date.now(),
@@ -229,10 +250,10 @@ class HeartbeatMonitor implements IHeartbeatMonitor {
 
   private handleOffline(contestantId: string): void {
     // Disconnect WebSocket
-    const ws = connections.get(contestantId);
+    const ws = this.connectionsMap.get(contestantId);
     if (ws) {
       ws.close(1001, 'heartbeat_timeout');
-      connections.delete(contestantId);
+      this.connectionsMap.delete(contestantId);
     }
 
     // Update DB status
@@ -240,7 +261,7 @@ class HeartbeatMonitor implements IHeartbeatMonitor {
       .run(Date.now(), contestantId);
 
     // Push contestant.status event to all online contestants
-    broadcast(
+    this.broadcastFn(
       {
         type: 'contestant.status',
         payload: { id: contestantId, status: 'offline' },

@@ -112,8 +112,8 @@ export function AttributePanel() {
     try {
       const [votesRes, hbRes, zoneTypesRes] = await Promise.allSettled([
         apiClient.get<{ likes: number; dislikes: number }>(`/api/contestants/${id}/votes`),
-        apiClient.get<{ records: HeartbeatRecord[] }>(`/api/admin/contestants/${id}/heartbeat-history?limit=1`),
-        zone ? apiClient.get<ZoneType[]>('/api/admin/zone-types') : Promise.resolve(null),
+        apiClient.get<{ history: HeartbeatRecord[] }>(`/api/contestants/${id}/heartbeat-history?limit=1`),
+        zone ? apiClient.get<ZoneType[]>('/api/zone-types') : Promise.resolve(null),
       ]);
 
       if (votesRes.status === 'fulfilled') {
@@ -121,7 +121,7 @@ export function AttributePanel() {
       }
 
       if (hbRes.status === 'fulfilled' && hbRes.value) {
-        const latest = hbRes.value.records?.[0];
+        const latest = hbRes.value.history?.[0];
         if (latest) {
           setHeartbeat({
             lastTimestamp: latest.timestamp,
@@ -157,7 +157,10 @@ export function AttributePanel() {
   const handleVote = async (type: 'like' | 'dislike') => {
     if (!selectedId) return;
     try {
-      await apiClient.post(`/api/contestants/${selectedId}/vote`, { type });
+      await apiClient.post(`/api/contestants/${selectedId}/vote`, {
+        type,
+        viewerId: 'viewer-' + Math.random().toString(36).slice(2, 8),
+      });
       setVotes((prev) => ({
         likes: type === 'like' ? prev.likes + 1 : prev.likes,
         dislikes: type === 'dislike' ? prev.dislikes + 1 : prev.dislikes,

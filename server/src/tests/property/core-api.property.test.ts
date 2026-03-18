@@ -35,11 +35,13 @@ vi.mock('../../db', () => ({
   },
 }));
 
-const { mockGetZoneAt, mockGetPosition, mockGetApplicableRules, mockGetEnergy } = vi.hoisted(() => ({
+const { mockGetZoneAt, mockGetPosition, mockGetApplicableRules, mockGetEnergy, mockIsAPIAllowed, mockModifyEnergy } = vi.hoisted(() => ({
   mockGetZoneAt: vi.fn(),
   mockGetPosition: vi.fn(),
   mockGetApplicableRules: vi.fn(),
   mockGetEnergy: vi.fn().mockReturnValue(100),
+  mockIsAPIAllowed: vi.fn().mockReturnValue(true),
+  mockModifyEnergy: vi.fn().mockResolvedValue(97),
 }));
 
 vi.mock('../../modules/world-manager', () => ({
@@ -48,6 +50,8 @@ vi.mock('../../modules/world-manager', () => ({
     getPosition: mockGetPosition,
     getApplicableRules: mockGetApplicableRules,
     getEnergy: mockGetEnergy,
+    isAPIAllowed: mockIsAPIAllowed,
+    modifyEnergy: mockModifyEnergy,
     setPosition: vi.fn().mockResolvedValue(undefined),
     getZoneById: vi.fn(),
     getZoneCenter: vi.fn(),

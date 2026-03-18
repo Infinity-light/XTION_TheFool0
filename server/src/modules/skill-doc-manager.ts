@@ -10,7 +10,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import type {
   ISkillDocManager,
   SkillDocument,
-  SkillMetadata,
+  SkillCatalogEntry,
   DocumentVersion,
   ValidationResult,
 } from '../types';
@@ -66,6 +66,29 @@ function rowToDoc(row: SkillDocRow): SkillDocument {
   };
 }
 
+function extractRawFrontMatterValue(content: string, key: string): string | null {
+  const frontMatterMatch = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+  if (!frontMatterMatch) return null;
+
+  const keyPattern = new RegExp(`^\\s*${key}\\s*:\\s*(.+?)\\s*$`);
+  for (const line of frontMatterMatch[1].split(/\r?\n/)) {
+    const match = line.match(keyPattern);
+    if (!match) continue;
+
+    const rawValue = match[1].trim();
+    if (
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith('\'') && rawValue.endsWith('\''))
+    ) {
+      return rawValue.slice(1, -1);
+    }
+
+    return rawValue;
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // SkillDocManager
 // ---------------------------------------------------------------------------
@@ -103,7 +126,7 @@ export class SkillDocManagerClass implements ISkillDocManager {
     const { data } = matter(markdownContent);
     const now = Date.now();
     const id = uuidv4();
-    const version = String(data['version']);
+    const version = extractRawFrontMatterValue(markdownContent, 'version') ?? String(data['version']);
 
     this.db.prepare(`
       INSERT INTO skill_documents (id, name, version, description, homepage, author, tags, markdown_content, current_version, is_default, created_at, updated_at)
@@ -139,7 +162,7 @@ export class SkillDocManagerClass implements ISkillDocManager {
 
     const { data } = matter(markdownContent);
     const now = Date.now();
-    const newVersion = String(data['version']);
+    const newVersion = extractRawFrontMatterValue(markdownContent, 'version') ?? String(data['version']);
 
     this.db.prepare(`
       UPDATE skill_documents SET name=?, version=?, description=?, homepage=?, author=?, tags=?,
@@ -167,15 +190,21 @@ export class SkillDocManagerClass implements ISkillDocManager {
     this.db.prepare('DELETE FROM skill_documents WHERE id = ?').run(docId);
   }
 
-  async listDocuments(): Promise<SkillMetadata[]> {
+  async listFullDocuments(): Promise<SkillDocument[]> {
     const rows = this.db.prepare('SELECT * FROM skill_documents ORDER BY updated_at DESC').all() as SkillDocRow[];
-    return rows.map((r) => ({
-      name: r.name,
-      version: r.version,
-      description: r.description,
-      homepage: r.homepage ?? undefined,
-      author: r.author ?? undefined,
-      tags: JSON.parse(r.tags) as string[],
+    return rows.map(rowToDoc);
+  }
+
+  async listDocuments(): Promise<SkillCatalogEntry[]> {
+    const docs = await this.listFullDocuments();
+    return docs.map((doc) => ({
+      id: doc.id,
+      name: doc.metadata.name,
+      version: doc.metadata.version,
+      description: doc.metadata.description,
+      homepage: doc.metadata.homepage,
+      author: doc.metadata.author,
+      tags: doc.metadata.tags,
     }));
   }
 

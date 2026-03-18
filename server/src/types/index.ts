@@ -129,6 +129,10 @@ export interface SkillMetadata {
   tags?: string[];
 }
 
+export interface SkillCatalogEntry extends SkillMetadata {
+  id: string;
+}
+
 export interface DocumentVersion {
   version: string;
   markdownContent: string;
@@ -283,7 +287,7 @@ export interface ServerResponse {
 
 export interface IAuthManager {
   generateKey(contestantName: string): Promise<Key>;
-  validateKey(key: string): Promise<{ valid: boolean; contestantId?: string }>;
+  validateKey(key: string): Promise<{ valid: boolean; keyId?: string }>;
   revokeKey(keyId: string): Promise<void>;
   regenerateKey(keyId: string): Promise<Key>;
   listKeys(): Promise<Key[]>;
@@ -372,7 +376,8 @@ export interface ISkillDocManager {
   getDocument(docId: string): Promise<SkillDocument>;
   updateDocument(docId: string, markdownContent: string): Promise<SkillDocument>;
   deleteDocument(docId: string): Promise<void>;
-  listDocuments(): Promise<SkillMetadata[]>;
+  listFullDocuments(): Promise<SkillDocument[]>;
+  listDocuments(): Promise<SkillCatalogEntry[]>;
   getVersionHistory(docId: string): Promise<DocumentVersion[]>;
   rollbackToVersion(docId: string, version: string): Promise<SkillDocument>;
 }
@@ -380,7 +385,7 @@ export interface ISkillDocManager {
 // --- DocDistributor ---
 
 export interface IDocDistributor {
-  listAvailableSkills(contestantId: string): Promise<SkillMetadata[]>;
+  listAvailableSkills(contestantId: string): Promise<SkillCatalogEntry[]>;
   installSkill(contestantId: string, skillDocId: string): Promise<string>;
   getMandatoryDocuments(): Promise<PlatformDocument[]>;
   getPlatformDocument(docName: string): Promise<PlatformDocument>;

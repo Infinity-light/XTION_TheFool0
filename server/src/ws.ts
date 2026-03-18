@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
 import { authManager } from './modules/auth-manager';
 import { docDistributor } from './modules/doc-distributor';
+import { heartbeatMonitor } from './modules/heartbeat-monitor';
 import type { ClientMessage, ServerEvent, Contestant, Position, Zone } from './types/index';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,11 @@ interface ContestantRow {
   disconnected_at: number | null;
 }
 
+interface ReconnectState {
+  position: Position;
+  zoneId: string;
+}
+
 function getDefaultZone(): ZoneRow | null {
   // Prefer zt-social zone, fallback to first zone
   const zone = db.prepare(`
@@ -72,6 +78,32 @@ function getZoneCenterPosition(zone: ZoneRow): Position {
   };
 }
 
+function getZoneById(zoneId: string): ZoneRow | null {
+  return db.prepare(`
+    SELECT id, name, x1, y1, x2, y2, zone_type_id FROM zones WHERE id = ?
+  `).get(zoneId) as ZoneRow | null;
+}
+
+function resolveReconnectState(
+  existing: ContestantRow,
+  fallbackPosition: Position,
+  fallbackZoneId: string,
+): ReconnectState {
+  if (!existing.current_zone_id) {
+    return { position: fallbackPosition, zoneId: fallbackZoneId };
+  }
+
+  const existingZone = getZoneById(existing.current_zone_id);
+  if (!existingZone) {
+    return { position: fallbackPosition, zoneId: fallbackZoneId };
+  }
+
+  return {
+    position: { x: existing.position_x, y: existing.position_y },
+    zoneId: existing.current_zone_id,
+  };
+}
+
 function upsertContestant(keyId: string, name: string, position: Position, zoneId: string): Contestant {
   const now = Date.now();
 
@@ -81,20 +113,22 @@ function upsertContestant(keyId: string, name: string, position: Position, zoneI
   `).get(keyId) as ContestantRow | undefined;
 
   if (existing) {
+    const reconnectState = resolveReconnectState(existing, position, zoneId);
+
     // Update existing contestant to online
     db.prepare(`
       UPDATE contestants
-      SET status = 'online', position_x = ?, position_y = ?, current_zone_id = ?, connected_at = ?, disconnected_at = NULL
+      SET name = ?, status = 'online', position_x = ?, position_y = ?, current_zone_id = ?, connected_at = ?, disconnected_at = NULL
       WHERE key_id = ?
-    `).run(position.x, position.y, zoneId, now, keyId);
+    `).run(name, reconnectState.position.x, reconnectState.position.y, reconnectState.zoneId, now, keyId);
 
     return {
       id: existing.id,
       keyId,
-      name: existing.name,
+      name,
       status: 'online',
-      position,
-      currentZoneId: zoneId,
+      position: reconnectState.position,
+      currentZoneId: reconnectState.zoneId,
       energy: existing.energy,
       installedSkills: JSON.parse(existing.installed_skills) as string[],
       attributes: JSON.parse(existing.attributes) as Record<string, unknown>,
@@ -204,13 +238,13 @@ async function handleAuth(
 
   // Validate key
   const result = await authManager.validateKey(key);
-  if (!result.valid || !result.contestantId) {
+  if (!result.valid || !result.keyId) {
     sendError(ws, 'AUTH_INVALID_KEY', 'Key 无效或已被吊销');
     ws.close(1008, 'AUTH_INVALID_KEY');
     return;
   }
 
-  const keyId = result.contestantId;
+  const keyId = result.keyId;
 
   // Get default zone and compute initial position
   const defaultZone = getDefaultZone();
@@ -238,6 +272,7 @@ async function handleAuth(
 
   // Register connection
   registerContestant(contestant.id);
+  heartbeatMonitor.register(contestant.id);
 
   // Build world.state payload
   const zones = getAllZones();
@@ -316,19 +351,38 @@ export function setupWebSocket(server: http.Server): WebSocketServer {
 
       handleMessage(ws, msg, (id) => {
         contestantId = id;
+        const previousConnection = connections.get(id);
         connections.set(id, ws);
+        if (previousConnection && previousConnection !== ws) {
+          previousConnection.close(1000, 'replaced_by_new_connection');
+        }
       });
     });
 
     ws.on('close', () => {
       if (contestantId) {
+        if (connections.get(contestantId) !== ws) {
+          return;
+        }
+
         connections.delete(contestantId);
 
         const idToMark = contestantId;
 
         // Schedule offline marking after 5 seconds, preserving position
         const timer = setTimeout(() => {
+          const row = db.prepare(
+            'SELECT status FROM contestants WHERE id = ?',
+          ).get(idToMark) as { status: string } | undefined;
+
+          if (row?.status === 'offline') {
+            heartbeatMonitor.unregister(idToMark);
+            disconnectTimers.delete(idToMark);
+            return;
+          }
+
           markContestantOffline(idToMark);
+          heartbeatMonitor.unregister(idToMark);
           disconnectTimers.delete(idToMark);
 
           // Notify remaining online contestants
@@ -407,6 +461,9 @@ export function broadcast(event: ServerEvent, exclude?: string): void {
     sendEvent(ws, event);
   }
 }
+
+docDistributor.attachRealtime(connections, sendEvent);
+heartbeatMonitor.attachRealtime(connections, sendEvent, broadcast);
 
 function sendError(ws: WebSocket, code: string, message: string): void {
   sendEvent(ws, {

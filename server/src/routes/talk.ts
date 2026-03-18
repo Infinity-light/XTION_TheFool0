@@ -5,66 +5,34 @@
 // =============================================================================
 
 import { Router, type Request, type Response } from 'express';
-import { db } from '../db';
 import { coreAPIHandler, APIError } from '../modules/core-api-handler';
 import type { ErrorResponse } from '../types';
 
 export const talkRouter = Router();
 
 // ---------------------------------------------------------------------------
-// Helper: extract contestant from Authorization header
-// Note: auth middleware (task 14.1) not yet implemented.
-// We look up the contestant by key from "Authorization: Bearer <key>"
-// ---------------------------------------------------------------------------
-
-interface ContestantRow {
-  id: string;
-  name: string;
-  status: string;
-}
-
-function getContestantFromRequest(req: Request): ContestantRow | null {
-  const authHeader = req.headers['authorization'];
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const key = authHeader.slice(7).trim();
-  if (!key) return null;
-
-  // Look up key → contestant
-  const keyRow = db.prepare(`
-    SELECT id FROM keys WHERE key = ? AND status = 'active'
-  `).get(key) as { id: string } | undefined;
-
-  if (!keyRow) return null;
-
-  const contestant = db.prepare(`
-    SELECT id, name, status FROM contestants WHERE key_id = ?
-  `).get(keyRow.id) as ContestantRow | undefined;
-
-  return contestant ?? null;
-}
-
-// ---------------------------------------------------------------------------
 // POST /api/talk
 // ---------------------------------------------------------------------------
 
 talkRouter.post('/', async (req: Request, res: Response): Promise<void> => {
-  // Auth
-  const contestant = getContestantFromRequest(req);
-  if (!contestant) {
+  const contestantId = req.contestantId;
+  if (!contestantId) {
     const body: ErrorResponse = {
-      error: { code: 'AUTH_MISSING_KEY', message: '未携带有效的认证 Key' },
+      error: { code: 'AUTH_CONTESTANT_NOT_REGISTERED', message: '当前 Key 尚未通过 WebSocket 完成接入' },
     };
-    res.status(401).json(body);
+    res.status(409).json(body);
     return;
   }
 
-  const { target_ids, message } = req.body as { target_ids?: unknown; message?: unknown };
+  const { target_ids, targetIds, message } = req.body as {
+    target_ids?: unknown;
+    targetIds?: unknown;
+    message?: unknown;
+  };
+  const resolvedTargetIds = target_ids ?? targetIds;
 
   // Validate request body
-  if (!Array.isArray(target_ids) || target_ids.length === 0) {
+  if (!Array.isArray(resolvedTargetIds) || resolvedTargetIds.length === 0) {
     const body: ErrorResponse = {
       error: { code: 'SYS_INVALID_PARAMS', message: 'target_ids 必须是非空数组' },
     };
@@ -82,8 +50,8 @@ talkRouter.post('/', async (req: Request, res: Response): Promise<void> => {
 
   try {
     const result = await coreAPIHandler.handleTalk({
-      senderId: contestant.id,
-      targetIds: target_ids as string[],
+      senderId: contestantId,
+      targetIds: resolvedTargetIds as string[],
       message,
     });
 
