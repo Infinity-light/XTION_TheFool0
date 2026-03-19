@@ -73,8 +73,7 @@ function rowToZone(r: ZoneRow) {
 
 statusRouter.get('/status/me', (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Auth middleware will set req.contestantId in task 14.1; use header fallback for now
-    const contestantId = req.headers['x-contestant-id'] as string;
+    const contestantId = req.contestantId ?? (req.headers['x-contestant-id'] as string);
     if (!contestantId) return next(httpError(401, 'AUTH_MISSING_KEY', '需要认证'));
 
     const row = db.prepare('SELECT * FROM contestants WHERE id = ?').get(contestantId) as ContestantRow | undefined;

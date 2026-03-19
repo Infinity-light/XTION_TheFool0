@@ -49,6 +49,7 @@ export async function authMiddleware(
     if (!result.valid || !result.contestantId) {
       return next(httpError(401, 'AUTH_INVALID_KEY', 'Key 无效或已被吊销'));
     }
+    // Use contestantId (contestants.id) for downstream handlers
     req.contestantId = result.contestantId;
     next();
   } catch (err) {

@@ -22,8 +22,7 @@ function httpError(statusCode: number, code: string, message: string) {
 
 skillsRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // contestantId comes from auth middleware (added in task 14.1); use header fallback for now
-    const contestantId = (req.headers['x-contestant-id'] as string) ?? 'anonymous';
+    const contestantId = req.contestantId ?? (req.headers['x-contestant-id'] as string) ?? 'anonymous';
     const list = await docDistributor.listAvailableSkills(contestantId);
     res.json(list);
   } catch (err) {
@@ -38,7 +37,7 @@ skillsRouter.get('/', async (req: Request, res: Response, next: NextFunction) =>
 
 skillsRouter.get('/:id/install', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const contestantId = (req.headers['x-contestant-id'] as string) ?? 'anonymous';
+    const contestantId = req.contestantId ?? (req.headers['x-contestant-id'] as string) ?? 'anonymous';
     const content = await docDistributor.installSkill(contestantId, req.params['id'] as string);
     res.type('text/markdown').send(content);
   } catch (err) {

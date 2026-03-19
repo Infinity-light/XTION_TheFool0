@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from './db';
 import { authManager } from './modules/auth-manager';
 import { docDistributor } from './modules/doc-distributor';
+import { heartbeatMonitor } from './modules/heartbeat-monitor';
 import type { ClientMessage, ServerEvent, Contestant, Position, Zone } from './types/index';
 
 // ---------------------------------------------------------------------------
@@ -204,13 +205,13 @@ async function handleAuth(
 
   // Validate key
   const result = await authManager.validateKey(key);
-  if (!result.valid || !result.contestantId) {
+  if (!result.valid || !result.keyId) {
     sendError(ws, 'AUTH_INVALID_KEY', 'Key 无效或已被吊销');
     ws.close(1008, 'AUTH_INVALID_KEY');
     return;
   }
 
-  const keyId = result.contestantId;
+  const keyId = result.keyId;
 
   // Get default zone and compute initial position
   const defaultZone = getDefaultZone();
@@ -289,6 +290,9 @@ async function handleAuth(
     contestant.id,
   );
 
+  // Register contestant with heartbeat monitor (P0-1 fix)
+  heartbeatMonitor.register(contestant.id);
+
   // Push mandatory documents to newly connected contestant (Requirements: 9.2, 12.3)
   docDistributor.pushMandatoryDocuments(contestant.id).catch((err: unknown) => {
     console.error('[WS] pushMandatoryDocuments error:', err);
@@ -323,6 +327,7 @@ export function setupWebSocket(server: http.Server): WebSocketServer {
     ws.on('close', () => {
       if (contestantId) {
         connections.delete(contestantId);
+        heartbeatMonitor.unregister(contestantId);
 
         const idToMark = contestantId;
 

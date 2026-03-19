@@ -78,12 +78,28 @@ export class BootScene extends Phaser.Scene {
 
   private createContestantTexture(): void {
     const gfx = this.make.graphics({ x: 0, y: 0 }, false);
-    // Body
-    gfx.fillStyle(0x1565c0);
-    gfx.fillCircle(20, 20, 16);
+    // Body — lobster red
+    gfx.fillStyle(0xc62828);
+    gfx.fillEllipse(20, 24, 28, 22);
+    // Shell segments
+    gfx.fillStyle(0xb71c1c);
+    gfx.fillRect(8, 18, 24, 4);
+    gfx.fillRect(8, 24, 24, 4);
     // Head
-    gfx.fillStyle(0xffcc80);
-    gfx.fillCircle(20, 10, 8);
+    gfx.fillStyle(0xe53935);
+    gfx.fillCircle(20, 12, 10);
+    // Eyes
+    gfx.fillStyle(0x000000);
+    gfx.fillCircle(15, 10, 2);
+    gfx.fillCircle(25, 10, 2);
+    // Claws
+    gfx.fillStyle(0xc62828);
+    gfx.fillEllipse(6, 22, 8, 6);
+    gfx.fillEllipse(34, 22, 8, 6);
+    // Antennae
+    gfx.lineStyle(1.5, 0xff8a80);
+    gfx.lineBetween(15, 4, 8, 0);
+    gfx.lineBetween(25, 4, 32, 0);
     gfx.generateTexture('contestant', 40, 40);
     gfx.destroy();
   }

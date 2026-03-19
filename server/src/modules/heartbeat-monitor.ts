@@ -6,6 +6,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
 import { connections, sendEvent, broadcast } from '../ws';
+import { worldManager } from './world-manager';
 import type {
   IHeartbeatMonitor,
   HeartbeatPayload,
@@ -37,7 +38,6 @@ interface ContestantState {
   timeoutEnteredAt: number | null; // ms timestamp when 'timeout' state was entered
   history: HeartbeatRecord[];
 }
-
 // ---------------------------------------------------------------------------
 // HeartbeatMonitor
 // ---------------------------------------------------------------------------
@@ -196,7 +196,46 @@ class HeartbeatMonitor implements IHeartbeatMonitor {
         }
       }
       // If elapsed <= intervalMs, stay healthy (heartbeat keeps it healthy)
+
+      // Rest 区被动回血（每个 tick 检查一次）
+      // Requirements: 11.6
+      if (prevStatus !== 'offline') {
+        this.applyRestZoneEnergyRegen(contestantId);
+      }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Rest 区被动回血
+  // -------------------------------------------------------------------------
+
+  private applyRestZoneEnergyRegen(contestantId: string): void {
+    const rule = worldManager.getApplicableRules(contestantId);
+    const regenEffect = rule.attributeEffects.find(
+      (e) => e.attribute === 'energy' && e.type === 'regen' && (e.trigger === 'on_tick' || e.trigger === 'passive'),
+    );
+    if (!regenEffect) return;
+
+    const current = worldManager.getEnergy(contestantId);
+    if (current >= 100) return; // 已满，无需回血
+
+    worldManager.modifyEnergy(contestantId, regenEffect.rate).then((newEnergy) => {
+      const ws = connections.get(contestantId);
+      if (ws) {
+        sendEvent(ws, {
+          type: 'energy.update',
+          payload: {
+            contestantId,
+            energy: newEnergy,
+            delta: regenEffect.rate,
+            reason: 'rest_zone_regen',
+          },
+          timestamp: Date.now(),
+        });
+      }
+    }).catch((err: unknown) => {
+      console.error('[HeartbeatMonitor] energy regen error:', err);
+    });
   }
 
   // -------------------------------------------------------------------------

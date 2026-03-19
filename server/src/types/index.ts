@@ -103,7 +103,7 @@ export interface AttributeEffect {
   attribute: string;
   type: 'regen' | 'consume' | 'static';
   rate: number;
-  trigger: 'passive' | 'on_api_call';
+  trigger: 'passive' | 'on_api_call' | 'on_tick';
 }
 
 // -----------------------------------------------------------------------------
@@ -283,7 +283,7 @@ export interface ServerResponse {
 
 export interface IAuthManager {
   generateKey(contestantName: string): Promise<Key>;
-  validateKey(key: string): Promise<{ valid: boolean; contestantId?: string }>;
+  validateKey(key: string): Promise<{ valid: boolean; contestantId?: string; keyId?: string }>;
   revokeKey(keyId: string): Promise<void>;
   regenerateKey(keyId: string): Promise<Key>;
   listKeys(): Promise<Key[]>;

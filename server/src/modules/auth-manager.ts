@@ -71,16 +71,24 @@ export class AuthManagerClass implements IAuthManager {
    * 验证 Key 是否有效（存在且状态为 active）
    * Requirements: 1.3, 1.4
    */
-  async validateKey(key: string): Promise<{ valid: boolean; contestantId?: string }> {
+  async validateKey(key: string): Promise<{ valid: boolean; contestantId?: string; keyId?: string }> {
     const row = this.db.prepare(`
-      SELECT id, status FROM keys WHERE key = ?
-    `).get(key) as { id: string; status: string } | undefined;
+      SELECT k.id as key_id, k.status, c.id as contestant_id
+      FROM keys k
+      LEFT JOIN contestants c ON c.key_id = k.id
+      WHERE k.key = ?
+    `).get(key) as { key_id: string; status: string; contestant_id: string | null } | undefined;
 
     if (!row || row.status !== 'active') {
       return { valid: false };
     }
 
-    return { valid: true, contestantId: row.id };
+    // keyId = keys.id (always available), contestantId = contestants.id (may be null before first WS auth)
+    return {
+      valid: true,
+      keyId: row.key_id,
+      contestantId: row.contestant_id ?? row.key_id,
+    };
   }
 
   /**

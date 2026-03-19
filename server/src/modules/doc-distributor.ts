@@ -5,7 +5,7 @@
 
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { db as globalDb } from '../db';
-import { connections, sendEvent } from '../ws';
+import { sendEvent } from '../ws';
 import { skillDocManager, SkillDocManagerClass } from './skill-doc-manager';
 import type {
   IDocDistributor,
@@ -42,10 +42,10 @@ function rowToDoc(row: PlatformDocRow): PlatformDocument {
 // ---------------------------------------------------------------------------
 
 export class DocDistributorClass implements IDocDistributor {
-  private db: DatabaseType;
-  private skillMgr: SkillDocManagerClass;
-  private connectionsMap: Map<string, WebSocket>;
-  private sendEventFn: (ws: WebSocket, event: ServerEvent) => void;
+  protected db: DatabaseType;
+  protected skillMgr: SkillDocManagerClass;
+  protected connectionsMap: Map<string, WebSocket>;
+  protected sendEventFn: (ws: WebSocket, event: ServerEvent) => void;
 
   constructor(
     db: DatabaseType,
@@ -159,12 +159,31 @@ export class DocDistributorClass implements IDocDistributor {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton — uses global db and ws connections
+// Singleton — uses global db and ws connections (lazy to avoid circular dep)
 // ---------------------------------------------------------------------------
 
 class DocDistributorSingleton extends DocDistributorClass {
   constructor() {
-    super(globalDb, skillDocManager as unknown as SkillDocManagerClass, connections, sendEvent);
+    // Pass an empty map initially; notifyDocumentUpdate / pushMandatoryDocuments
+    // will resolve the real connections map lazily at call time.
+    super(globalDb, skillDocManager as unknown as SkillDocManagerClass, new Map(), sendEvent);
+  }
+
+  // Override to lazily pull the real connections map from ws.ts at call time
+  private getConnections(): Map<string, WebSocket> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ws = require('../ws') as { connections: Map<string, WebSocket> };
+    return ws.connections;
+  }
+
+  async notifyDocumentUpdate(docName: string): Promise<void> {
+    this.connectionsMap = this.getConnections();
+    return super.notifyDocumentUpdate(docName);
+  }
+
+  async pushMandatoryDocuments(contestantId: string): Promise<void> {
+    this.connectionsMap = this.getConnections();
+    return super.pushMandatoryDocuments(contestantId);
   }
 }
 

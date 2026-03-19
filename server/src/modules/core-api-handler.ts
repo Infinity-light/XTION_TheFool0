@@ -51,7 +51,12 @@ class CoreAPIHandler implements ICoreAPIHandler {
   async handleTalk(params: TalkParams): Promise<TalkResult> {
     const { senderId, targetIds, message } = params;
 
-    // 1. 检查 Energy（为 0 时禁止 Talk）
+    // 1. 检查 Zone_Rule 是否允许 Talk API
+    if (!worldManager.isAPIAllowed(senderId, 'talk')) {
+      throw new APIError('API_ZONE_RESTRICTED', '当前区域不允许使用 Talk API', 403);
+    }
+
+    // 2. 检查 Energy（为 0 时禁止 Talk）
     // Requirements: 11.7
     const energy = worldManager.getEnergy(senderId);
     if (energy <= 0) {
@@ -120,6 +125,29 @@ class CoreAPIHandler implements ICoreAPIHandler {
       }
     }
 
+    // Work 区 Talk 扣减 Energy
+    // Requirements: 11.5
+    const talkRule = worldManager.getApplicableRules(senderId);
+    const talkWorkEffect = talkRule.attributeEffects.find(
+      (e) => e.attribute === 'energy' && e.type === 'consume' && e.trigger === 'on_api_call',
+    );
+    if (talkWorkEffect) {
+      const newEnergy = await worldManager.modifyEnergy(senderId, -talkWorkEffect.rate);
+      const senderWs = connections.get(senderId);
+      if (senderWs) {
+        sendEvent(senderWs, {
+          type: 'energy.update',
+          payload: {
+            contestantId: senderId,
+            energy: newEnergy,
+            delta: -talkWorkEffect.rate,
+            reason: 'talk_in_work_zone',
+          },
+          timestamp,
+        });
+      }
+    }
+
     return { messageId, timestamp };
   }
 
@@ -135,7 +163,19 @@ class CoreAPIHandler implements ICoreAPIHandler {
   async handleBroadcast(params: BroadcastParams): Promise<BroadcastResult> {
     const { senderId, message } = params;
 
-    // 1. 应用 Broadcast 频率限制
+    // 1. 检查 Zone_Rule 是否允许 Broadcast API
+    if (!worldManager.isAPIAllowed(senderId, 'broadcast')) {
+      throw new APIError('API_ZONE_RESTRICTED', '当前区域不允许使用 Broadcast API', 403);
+    }
+
+    // 2. 检查 Energy（为 0 时禁止 Broadcast）
+    // Requirements: 11.7
+    const energy = worldManager.getEnergy(senderId);
+    if (energy <= 0) {
+      throw new APIError('API_ENERGY_DEPLETED', '精力耗尽，无法发送消息（请移动到休息区恢复精力）', 403);
+    }
+
+    // 3. 应用 Broadcast 频率限制
     // Requirements: 4.5
     const allowed = rateLimiter.checkBroadcastLimit(senderId);
     if (!allowed) {
@@ -146,7 +186,7 @@ class CoreAPIHandler implements ICoreAPIHandler {
       );
     }
 
-    // 2. 持久化消息到 broadcast_messages 表
+    // 4. 持久化消息到 broadcast_messages 表
     // Requirements: 4.4
     const messageId = uuidv4();
     const timestamp = Date.now();
@@ -156,7 +196,7 @@ class CoreAPIHandler implements ICoreAPIHandler {
       VALUES (?, ?, ?, ?)
     `).run(messageId, senderId, message, timestamp);
 
-    // 3. 推送 broadcast.message 事件给所有在线 Contestant
+    // 5. 推送 broadcast.message 事件给所有在线 Contestant
     // Requirements: 4.1, 4.2
     const event: ServerEvent = {
       type: 'broadcast.message',
@@ -173,6 +213,29 @@ class CoreAPIHandler implements ICoreAPIHandler {
     for (const ws of connections.values()) {
       sendEvent(ws, event);
       recipientCount++;
+    }
+
+    // Work 区 Broadcast 扣减 Energy
+    // Requirements: 11.5
+    const bcRule = worldManager.getApplicableRules(senderId);
+    const bcWorkEffect = bcRule.attributeEffects.find(
+      (e) => e.attribute === 'energy' && e.type === 'consume' && e.trigger === 'on_api_call',
+    );
+    if (bcWorkEffect) {
+      const newEnergy = await worldManager.modifyEnergy(senderId, -bcWorkEffect.rate);
+      const senderWs = connections.get(senderId);
+      if (senderWs) {
+        sendEvent(senderWs, {
+          type: 'energy.update',
+          payload: {
+            contestantId: senderId,
+            energy: newEnergy,
+            delta: -bcWorkEffect.rate,
+            reason: 'broadcast_in_work_zone',
+          },
+          timestamp,
+        });
+      }
     }
 
     return { messageId, recipientCount, timestamp };
