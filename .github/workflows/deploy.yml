@@ -25,6 +25,7 @@ jobs:
           target: "/opt/apps/xtion-thefool0"
           rm: true
           overwrite: true
+          exclude: "node_modules,server/node_modules,client/node_modules,.git"
 
       - name: Build and deploy
         uses: appleboy/ssh-action@v1
