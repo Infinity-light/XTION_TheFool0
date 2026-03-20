@@ -15,7 +15,7 @@
   },
   "domain": {
     "enabled": true,
-    "name": "www.xtion.live",
+    "name": "xtion.godpenai.com",
     "https": true
   },
   "secrets": [],
