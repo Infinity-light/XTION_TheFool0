@@ -5,13 +5,15 @@ WORKDIR /app
 # 换用阿里云 alpine 镜像源
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
+# 设置 npm 镜像
+RUN echo "registry=https://registry.npmmirror.com" > /root/.npmrc
+
 # 复制所有 package.json
 COPY package*.json ./
 COPY server/package*.json ./server/
 COPY client/package*.json ./client/
 
 RUN apk add --no-cache python3 make g++
-RUN npm config set registry https://registry.npmmirror.com
 RUN npm install
 
 COPY . .
@@ -24,10 +26,12 @@ WORKDIR /app
 # 换用阿里云 alpine 镜像源
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
+# 设置 npm 镜像
+RUN echo "registry=https://registry.npmmirror.com" > /root/.npmrc
+
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/server/package*.json ./server/
 RUN apk add --no-cache python3 make g++
-RUN npm config set registry https://registry.npmmirror.com
 RUN npm install --workspace=server --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/server/dist ./server/dist
