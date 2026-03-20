@@ -6,7 +6,7 @@ on:
       - hyw_20260316
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,28 +41,28 @@ jobs:
           docker stop smoke-test && docker rm smoke-test
           exit 1
 
-      - name: Package image
+      - name: Package and transfer image
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
+          # Save image
           docker save xtion-thefool0:${{ github.sha }} | gzip > /tmp/image.tar.gz
           ls -lh /tmp/image.tar.gz
 
-      - name: Transfer image to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "/tmp/image.tar.gz"
-          target: "/tmp"
-          strip_components: 2
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $SERVER_HOST >> ~/.ssh/known_hosts 2>/dev/null
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+          # Transfer via scp
+          scp -i ~/.ssh/deploy_key /tmp/image.tar.gz ${SERVER_USER}@${SERVER_HOST}:/tmp/image.tar.gz
 
-    steps:
+          # Cleanup key
+          rm -f ~/.ssh/deploy_key
+
       - name: Deploy on server
         uses: appleboy/ssh-action@v1
         with:
@@ -85,14 +85,11 @@ jobs:
 
             # Generate .env
             cat > .env << 'ENVEOF'
-
             ENVEOF
             sed -i 's/^ *//' .env
 
-
             # Deploy
             docker compose up -d --no-build
-
 
             # Cleanup
             docker image prune -f
