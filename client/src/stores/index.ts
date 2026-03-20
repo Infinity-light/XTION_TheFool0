@@ -178,6 +178,10 @@ export function initStores(): void {
       timestamp: p.timestamp,
     };
     useMessageStore.getState().addBroadcastMessage(msg);
+    // Show speech bubble on the sender's sprite
+    if (msg.senderId && msg.content) {
+      useGameStore.getState().setSpeechBubble(msg.senderId, msg.content, 6000);
+    }
   });
 
   // ── barrage ──────────────────────────────────────────────────────────────────

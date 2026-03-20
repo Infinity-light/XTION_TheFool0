@@ -6,6 +6,11 @@
 import { create } from 'zustand';
 import type { GameMap, Zone, Contestant, Position } from '../../../server/src/types/index';
 
+export interface SpeechBubble {
+  content: string;
+  expireAt: number; // timestamp ms
+}
+
 export interface GameState {
   // Connection state
   connected: boolean;
@@ -16,9 +21,14 @@ export interface GameState {
   zones: Map<string, Zone>;
   contestants: Map<string, Contestant>;
 
+  // Speech bubbles: contestantId → bubble
+  speechBubbles: Map<string, SpeechBubble>;
+
   // Actions
   setConnected: (connected: boolean) => void;
   setAuthenticated: (authenticated: boolean) => void;
+  setSpeechBubble: (contestantId: string, content: string, durationMs?: number) => void;
+  clearSpeechBubble: (contestantId: string) => void;
 
   // world.state — initialize full world state
   initWorldState: (payload: {
@@ -58,6 +68,7 @@ const initialState = {
   map: null,
   zones: new Map<string, Zone>(),
   contestants: new Map<string, Contestant>(),
+  speechBubbles: new Map<string, SpeechBubble>(),
 };
 
 export const useGameStore = create<GameState>((set) => ({
@@ -65,6 +76,20 @@ export const useGameStore = create<GameState>((set) => ({
 
   setConnected: (connected) => set({ connected }),
   setAuthenticated: (authenticated) => set({ authenticated }),
+
+  setSpeechBubble: (contestantId, content, durationMs = 6000) =>
+    set((state) => {
+      const next = new Map(state.speechBubbles);
+      next.set(contestantId, { content, expireAt: Date.now() + durationMs });
+      return { speechBubbles: next };
+    }),
+
+  clearSpeechBubble: (contestantId) =>
+    set((state) => {
+      const next = new Map(state.speechBubbles);
+      next.delete(contestantId);
+      return { speechBubbles: next };
+    }),
 
   initWorldState: ({ map, zones, contestants }) =>
     set({

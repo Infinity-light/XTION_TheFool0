@@ -55,8 +55,13 @@ interface SpriteGroup {
   statusDot: Phaser.GameObjects.Arc;
   heartbeatDot: Phaser.GameObjects.Arc;
   energyLabel: Phaser.GameObjects.Text;
+  // Speech bubble elements
+  bubbleBackground: Phaser.GameObjects.Graphics;
+  bubbleText: Phaser.GameObjects.Text;
+  bubbleTail: Phaser.GameObjects.Graphics;
   healthStatus: HealthStatus;
   tween: Phaser.Tweens.Tween | null;
+  bubbleTimer: ReturnType<typeof setTimeout> | null;
 }
 
 // ── SpriteManager ────────────────────────────────────────────────────────────
@@ -129,13 +134,27 @@ export class SpriteManager {
       fontFamily: 'Arial, sans-serif',
     }).setOrigin(0.5, 0).setVisible(contestant.energy === 0);
 
+    // Speech bubble (hidden by default)
+    const bubbleBackground = this.scene.add.graphics();
+    const bubbleTail = this.scene.add.graphics();
+    const bubbleText = this.scene.add.text(0, -(SPRITE_SIZE / 2 + 60), '', {
+      fontSize: '11px',
+      color: '#000000',
+      fontFamily: 'Arial, sans-serif',
+      wordWrap: { width: 120 },
+      align: 'center',
+    }).setOrigin(0.5, 1).setVisible(false);
+
     // Container groups all elements and is positioned at world coords
     const container = this.scene.add.container(x, y, [
+      bubbleBackground,
+      bubbleTail,
       image,
       nameLabel,
       statusDot,
       heartbeatDot,
       energyLabel,
+      bubbleText,
     ]);
 
     // Make interactive for click → open AttributePanel — Req 6.9
@@ -153,8 +172,12 @@ export class SpriteManager {
       statusDot,
       heartbeatDot,
       energyLabel,
+      bubbleBackground,
+      bubbleText,
+      bubbleTail,
       healthStatus: 'healthy',
       tween: null,
+      bubbleTimer: null,
     };
 
     this.sprites.set(contestant.id, group);
@@ -201,9 +224,74 @@ export class SpriteManager {
     this.sprites.delete(id);
   }
 
-  /** Update heartbeat health status color — Req 9.11 */
-  updateHeartbeatStatus(id: string, healthStatus: HealthStatus): void {
+  /** Show a speech bubble above the contestant sprite. */
+  showSpeechBubble(id: string, content: string, durationMs: number = 6000): void {
     const group = this.sprites.get(id);
+    if (!group) return;
+
+    // Clear existing timer
+    if (group.bubbleTimer) {
+      clearTimeout(group.bubbleTimer);
+      group.bubbleTimer = null;
+    }
+
+    const padding = 8;
+    const maxWidth = 130;
+    const yOffset = -(SPRITE_SIZE / 2 + 16);
+
+    // Set text first to measure bounds
+    group.bubbleText
+      .setText(content)
+      .setWordWrapWidth(maxWidth)
+      .setVisible(true);
+
+    const textW = Math.min(group.bubbleText.width, maxWidth);
+    const textH = group.bubbleText.height;
+    const boxW = textW + padding * 2;
+    const boxH = textH + padding * 2;
+    const boxX = -boxW / 2;
+    const boxY = yOffset - boxH;
+
+    // Reposition text inside box
+    group.bubbleText.setPosition(0, yOffset - padding);
+
+    // Draw bubble background
+    group.bubbleBackground.clear();
+    group.bubbleBackground.fillStyle(0xffffff, 0.95);
+    group.bubbleBackground.lineStyle(1.5, 0x333333, 1);
+    group.bubbleBackground.fillRoundedRect(boxX, boxY, boxW, boxH, 6);
+    group.bubbleBackground.strokeRoundedRect(boxX, boxY, boxW, boxH, 6);
+    group.bubbleBackground.setVisible(true);
+
+    // Draw tail (small triangle pointing down toward sprite)
+    group.bubbleTail.clear();
+    group.bubbleTail.fillStyle(0xffffff, 0.95);
+    group.bubbleTail.lineStyle(1.5, 0x333333, 1);
+    group.bubbleTail.fillTriangle(-6, yOffset, 6, yOffset, 0, yOffset + 8);
+    group.bubbleTail.strokeTriangle(-6, yOffset, 6, yOffset, 0, yOffset + 8);
+    group.bubbleTail.setVisible(true);
+
+    // Auto-hide after duration
+    group.bubbleTimer = setTimeout(() => {
+      this.hideSpeechBubble(id);
+    }, durationMs);
+  }
+
+  /** Hide the speech bubble for a contestant. */
+  hideSpeechBubble(id: string): void {
+    const group = this.sprites.get(id);
+    if (!group) return;
+    group.bubbleBackground.clear().setVisible(false);
+    group.bubbleTail.clear().setVisible(false);
+    group.bubbleText.setVisible(false);
+    if (group.bubbleTimer) {
+      clearTimeout(group.bubbleTimer);
+      group.bubbleTimer = null;
+    }
+  }
+
+  /** Update heartbeat health status color — Req 9.11 */
+  updateHeartbeatStatus(id: string, healthStatus: HealthStatus): void {    const group = this.sprites.get(id);
     if (!group) return;
 
     group.healthStatus = healthStatus;
@@ -227,6 +315,7 @@ export class SpriteManager {
     this.unsubscribeStore?.();
     this.sprites.forEach((group) => {
       group.tween?.stop();
+      if (group.bubbleTimer) clearTimeout(group.bubbleTimer);
       group.container.destroy();
     });
     this.sprites.clear();
@@ -299,10 +388,8 @@ export class SpriteManager {
       // Added or updated
       current.forEach((contestant, id) => {
         if (!previous.has(id)) {
-          // New contestant
           this.addContestant(contestant);
         } else if (contestant !== previous.get(id)) {
-          // Changed contestant
           this.updateContestant(contestant);
         }
       });
@@ -311,6 +398,23 @@ export class SpriteManager {
       previous.forEach((_c, id) => {
         if (!current.has(id)) {
           this.removeContestant(id);
+        }
+      });
+
+      // Speech bubbles
+      state.speechBubbles.forEach((bubble, id) => {
+        const prevBubble = prev.speechBubbles.get(id);
+        if (bubble !== prevBubble) {
+          const remaining = bubble.expireAt - Date.now();
+          if (remaining > 0) {
+            this.showSpeechBubble(id, bubble.content, remaining);
+          }
+        }
+      });
+      // Hide removed bubbles
+      prev.speechBubbles.forEach((_b, id) => {
+        if (!state.speechBubbles.has(id)) {
+          this.hideSpeechBubble(id);
         }
       });
     });
