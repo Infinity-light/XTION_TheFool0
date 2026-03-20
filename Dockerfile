@@ -43,6 +43,8 @@ RUN npm install --workspace=server --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/client/dist ./client/dist
+COPY skills/ ./skills/
+RUN mkdir -p data
 
 EXPOSE 3000
 
