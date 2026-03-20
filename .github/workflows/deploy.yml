@@ -6,33 +6,82 @@ on:
       - hyw_20260316
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - name: Build and deploy
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t xtion-thefool0:${{ github.sha }} .
+          echo "Image built successfully"
+          docker images xtion-thefool0:${{ github.sha }}
+
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke-test -p 3000:3000 xtion-thefool0:${{ github.sha }}
+          echo "Waiting for container to start..."
+          sleep 8
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
+            if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 500 ]; then
+              echo "Smoke test passed (HTTP $STATUS)"
+              docker stop smoke-test && docker rm smoke-test
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $STATUS, retrying in 3s..."
+            sleep 3
+          done
+          echo "Smoke test failed"
+          docker logs smoke-test
+          docker stop smoke-test && docker rm smoke-test
+          exit 1
+
+      - name: Package image
+        run: |
+          docker save xtion-thefool0:${{ github.sha }} | gzip > /tmp/image.tar.gz
+          ls -lh /tmp/image.tar.gz
+
+      - name: Transfer image to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "/tmp/image.tar.gz"
+          target: "/tmp"
+          strip_components: 2
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 30m
+          command_timeout: 15m
           script: |
-            mkdir -p /opt/apps
-            cd /opt/apps
+            set -e
+            cd /opt/apps/xtion-thefool0
 
-            # Clone or pull latest code
-            if [ -d "xtion-thefool0/.git" ]; then
-              cd xtion-thefool0
-              git fetch origin hyw_20260316
-              git reset --hard origin/hyw_20260316
-            else
-              rm -rf xtion-thefool0
-              git clone -b hyw_20260316 https://github.com/Infinity-light/XTION_TheFool0.git xtion-thefool0
-              cd xtion-thefool0
-            fi
+            # Load the pre-built image
+            echo "Loading Docker image..."
+            docker load < /tmp/image.tar.gz
+            rm -f /tmp/image.tar.gz
+
+            # Tag for compose
+            IMAGE_ID=$(docker images --format '{{.ID}}' --filter "reference=xtion-thefool0" | head -1)
+            docker tag $IMAGE_ID xtion-thefool0:latest
 
             # Generate .env
             cat > .env << 'ENVEOF'
@@ -40,8 +89,14 @@ jobs:
             ENVEOF
             sed -i 's/^ *//' .env
 
+
+            # Deploy
+            docker compose up -d --no-build
+
+
+            # Cleanup
             docker image prune -f
-            docker compose up -d --build
+            echo "Deployment complete"
 
       - name: Health check
         uses: appleboy/ssh-action@v1
@@ -62,5 +117,10 @@ jobs:
               sleep 5
             done
             echo "Health check failed after 5 attempts"
-            docker logs xtion-thefool0 --tail 20
+            docker logs xtion-thefool0 --tail 30
+
+            # Auto-cleanup on failure
+            echo "Cleaning up failed deployment..."
+            docker compose -f /opt/apps/xtion-thefool0/docker-compose.yml down 2>/dev/null || true
+            docker image prune -f
             exit 1

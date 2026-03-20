@@ -1,6 +1,6 @@
 services:
   xtion-thefool0:
-    build: .
+    image: xtion-thefool0:latest
     container_name: xtion-thefool0
     restart: unless-stopped
 

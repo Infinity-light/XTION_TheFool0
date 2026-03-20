@@ -2,10 +2,13 @@
   "project": {
     "name": "xtion-thefool0",
     "type": "node",
+    "language": "node",
     "port": 3000,
     "buildCmd": "npm install && npm run build:server && npm run build:client",
     "startCmd": "node server/dist/index.js",
-    "staticDir": "client/dist"
+    "staticDir": "client/dist",
+    "projectStructure": "multi-dir",
+    "subDirs": { "server": "server", "client": "client" }
   },
   "server": {
     "host": "47.103.197.124",
@@ -19,11 +22,27 @@
     "https": true
   },
   "secrets": [],
+  "envVars": {},
   "branches": {
     "production": "hyw_20260316"
   },
   "database": {
     "type": "none",
-    "location": "none"
+    "location": "none",
+    "dataDir": "",
+    "initCmd": "",
+    "migrateCmd": "",
+    "createAdmin": false,
+    "adminCmd": ""
+  },
+  "strategy": {
+    "buildLocation": "ci",
+    "transferMethod": "scp",
+    "mirrors": {
+      "alpine": "mirrors.aliyun.com",
+      "npm": "registry.npmmirror.com",
+      "docker": ["docker.1panel.live", "hub.rat.dev"]
+    },
+    "needsBuildTools": true
   }
 }

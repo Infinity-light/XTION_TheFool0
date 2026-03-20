@@ -6,7 +6,7 @@ DEPLOY_DIR="/opt/apps"
 APP_DIR="${DEPLOY_DIR}/${APP_NAME}"
 APP_PORT="3000"
 DOMAIN_ENABLED="true"
-DOMAIN_NAME="www.xtion.live"
+DOMAIN_NAME="xtion.godpenai.com"
 HTTPS_ENABLED="true"
 
 GREEN='\033[0;32m'
@@ -48,6 +48,20 @@ else
     curl -fsSL https://get.docker.com | sh
     systemctl enable docker && systemctl start docker
     ok "Docker 安装完成: $(docker --version)"
+fi
+
+# ─── Step 1.5: Docker 镜像源 ───
+MIRROR_DOCKER=""
+if [ -n "${MIRROR_DOCKER}" ]; then
+    step "1.5/7 配置 Docker 镜像源"
+    mkdir -p /etc/docker
+    cat > /etc/docker/daemon.json << DAEMON_EOF
+{
+  "registry-mirrors": [${MIRROR_DOCKER}]
+}
+DAEMON_EOF
+    systemctl restart docker
+    ok "Docker 镜像源已配置"
 fi
 
 # ─── Step 2: Docker Compose ───
@@ -164,6 +178,11 @@ else
     step "7/7 HTTPS"
     echo "  未启用，跳过"
 fi
+
+# ─── Pre-deploy cleanup ───
+step "清理旧资源"
+docker image prune -f 2>/dev/null || true
+ok "清理完成"
 
 # ─── 完成 ───
 echo ""
