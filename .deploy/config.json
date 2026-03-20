@@ -1,0 +1,29 @@
+{
+  "project": {
+    "name": "xtion-thefool0",
+    "type": "node",
+    "port": 3000,
+    "buildCmd": "npm install && npm run build:server && npm run build:client",
+    "startCmd": "node server/dist/index.js",
+    "staticDir": "client/dist"
+  },
+  "server": {
+    "host": "47.103.197.124",
+    "user": "root",
+    "sshKeyPath": "~/.ssh/id_rsa",
+    "deployDir": "/opt/apps"
+  },
+  "domain": {
+    "enabled": true,
+    "name": "www.xtion.live",
+    "https": true
+  },
+  "secrets": [],
+  "branches": {
+    "production": "hyw_20260316"
+  },
+  "database": {
+    "type": "none",
+    "location": "none"
+  }
+}

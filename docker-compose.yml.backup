@@ -1,0 +1,23 @@
+services:
+  xtion-thefool0:
+    build: .
+    container_name: xtion-thefool0
+    restart: unless-stopped
+
+
+    ports:
+      - "3000:3000"
+
+    env_file:
+      - path: .env
+        required: false
+
+
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+
