@@ -4,6 +4,7 @@
 // =============================================================================
 
 import express, { type Request, type Response, type NextFunction } from 'express';
+import path from 'path';
 import cors from 'cors';
 import type { ErrorResponse } from './types/index';
 import { adminKeysRouter } from './routes/admin-keys';
@@ -91,6 +92,18 @@ app.use('/api', authMiddleware, eventsRouter);
 app.use('/api', interactionRouter);
 app.use('/api', authMiddleware, statusRouter);
 app.use('/api/admin', adminMonitorRouter);
+
+// ---------------------------------------------------------------------------
+// Static files — serve React/Phaser client build
+// ---------------------------------------------------------------------------
+
+const CLIENT_DIST = path.join(__dirname, '../../client/dist');
+app.use(express.static(CLIENT_DIST));
+
+// SPA fallback — let client-side router handle unmatched routes
+app.get('*', (_req: Request, res: Response) => {
+  res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+});
 
 // ---------------------------------------------------------------------------
 // Unified error handler — { "error": { "code": "...", "message": "..." } }
